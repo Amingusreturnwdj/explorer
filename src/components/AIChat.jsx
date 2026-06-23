@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { MessageSquare, X, Send, Bot, User } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: 'AQ.Ab8RN6LuQdRV5C9BK7gLjn5HlnjLAfiq2Zrh3vZdLAYyq9M9EQ' });
+const GEMINI_API_KEY = 'AQ.Ab8RN6LuQdRV5C9BK7gLjn5HlnjLAfiq2Zrh3vZdLAYyq9M9EQ';
 
 export default function AIChat() {
   const { shops, currentLocation } = useAppContext();
@@ -41,12 +40,18 @@ Current context:
 
 Please provide a helpful, concise, and friendly response based on this context.`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: contextPrompt
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: contextPrompt }] }]
+        })
       });
+      
+      const data = await response.json();
+      const text = data.candidates[0].content.parts[0].text;
 
-      setMessages(prev => [...prev, { role: 'assistant', content: response.text }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: text }]);
     } catch (error) {
       console.error('AI Error:', error);
       setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error connecting to the AI.' }]);
