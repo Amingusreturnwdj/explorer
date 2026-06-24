@@ -1,33 +1,40 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { ref, onValue, push, set } from "firebase/database";
+import { database } from '../firebase';
 
 const AppContext = createContext();
 
-// Mock shops just to have something if API fails
-const initialShops = [
-  { id: 1, name: 'Cafe Chill (Local)', category: 'Cafe', description: 'Cozy place for coffee.', lat: 13.7563, lng: 100.5018 },
-  { id: 2, name: 'Spicy Noodle (Local)', category: 'Restaurant', description: 'Best local noodles.', lat: 13.7600, lng: 100.5100 }
-];
-
 export const AppProvider = ({ children }) => {
-  const [user, setUser] = useState(null); // { role: 'user' | 'owner', name: string }
-  const [localShops, setLocalShops] = useState(() => {
-    const saved = localStorage.getItem('app_shops');
-    return saved ? JSON.parse(saved) : initialShops;
-  });
+  const [user, setUser] = useState(null);
+  const [localShops, setLocalShops] = useState([]);
   const [fetchedShops, setFetchedShops] = useState([]);
   const [currentLocation, setCurrentLocation] = useState(null);
-  const [searchRadius, setSearchRadius] = useState(1000); // meters
+  const [searchRadius, setSearchRadius] = useState(1000);
   const [isFetching, setIsFetching] = useState(false);
   
+  // Firebase Realtime Listener
   useEffect(() => {
-    localStorage.setItem('app_shops', JSON.stringify(localShops));
-  }, [localShops]);
+    const shopsRef = ref(database, 'shops');
+    const unsubscribe = onValue(shopsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const shopsList = Object.keys(data).map(key => ({
+          ...data[key],
+          id: key
+        }));
+        setLocalShops(shopsList);
+      } else {
+        setLocalShops([]);
+      }
+    });
+    
+    return () => unsubscribe();
+  }, []);
 
   const fetchOverpassData = useCallback(async (lat, lng, radius) => {
     if (!lat || !lng) return;
     setIsFetching(true);
     
-    // Overpass QL to fetch restaurants, cafes, and fast_food within radius
     const query = `
       [out:json][timeout:25];
       (
@@ -59,7 +66,6 @@ export const AppProvider = ({ children }) => {
         };
       });
       
-      // Filter out unnamed places to keep the map clean
       setFetchedShops(newShops.filter(s => s.name !== 'Unnamed Place'));
     } catch (error) {
       console.error("Failed to fetch from Overpass:", error);
@@ -68,7 +74,6 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
-  // Whenever location or radius changes, re-fetch data
   useEffect(() => {
     if (currentLocation) {
       fetchOverpassData(currentLocation.lat, currentLocation.lng, searchRadius);
@@ -78,8 +83,11 @@ export const AppProvider = ({ children }) => {
   const login = (role, name) => setUser({ role, name });
   const logout = () => setUser(null);
 
+  // Write new shop to Firebase
   const addShop = (shop) => {
-    setLocalShops(prev => [...prev, { ...shop, id: Date.now() }]);
+    const shopsRef = ref(database, 'shops');
+    const newShopRef = push(shopsRef);
+    set(newShopRef, shop);
   };
 
   const updateLocation = (loc) => {
