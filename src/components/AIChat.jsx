@@ -2,16 +2,16 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { MessageSquare, X, Send, Bot, User, Key } from 'lucide-react';
 
-const DEFAULT_KEY = 'AQ.Ab8RN6LuQdRV5C9BK7gLjn5HlnjLAfiq2Zrh3vZdLAYyq9M9EQ';
+const DEFAULT_KEY = 'sk-ffcb56b65fcd45a1b1ef7976ab9fe326';
 
 export default function AIChat() {
   const { shops, currentLocation } = useAppContext();
   const [isOpen, setIsOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || DEFAULT_KEY);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('deepseek_api_key') || DEFAULT_KEY);
   
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: 'Hello! I am your AI Map Companion. I can help you find places and give recommendations based on your current map data.' }
+    { role: 'assistant', content: 'Hello! I am your AI Map Companion powered by DeepSeek. I can help you find places and give recommendations based on your current map data.' }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -27,7 +27,7 @@ export default function AIChat() {
 
   const saveApiKey = (key) => {
     setApiKey(key);
-    localStorage.setItem('gemini_api_key', key);
+    localStorage.setItem('deepseek_api_key', key);
   };
 
   const handleSend = async (e) => {
@@ -36,11 +36,13 @@ export default function AIChat() {
 
     const userMessage = input.trim();
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    
+    const newMessages = [...messages, { role: 'user', content: userMessage }];
+    setMessages(newMessages);
     setIsLoading(true);
 
     try {
-      const contextPrompt = `You are a helpful AI Map Companion. The user is asking: "${userMessage}".
+      const systemPrompt = `You are a helpful AI Map Companion.
 Current context: 
 - Total shops on map: ${shops.length}
 - Shop details: ${JSON.stringify(shops.map(s => ({name: s.name, category: s.category, desc: s.description})))}
@@ -48,11 +50,21 @@ Current context:
 
 Please provide a helpful, concise, and friendly response based on this context.`;
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      // Convert local messages format to OpenAI format
+      const apiMessages = [
+        { role: 'system', content: systemPrompt },
+        ...newMessages.map(msg => ({ role: msg.role, content: msg.content }))
+      ];
+
+      const response = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: contextPrompt }] }]
+          model: 'deepseek-v4-flash',
+          messages: apiMessages
         })
       });
       
@@ -62,14 +74,14 @@ Please provide a helpful, concise, and friendly response based on this context.`
         throw new Error(data.error?.message || 'Unknown API error');
       }
 
-      const text = data.candidates[0].content.parts[0].text;
+      const text = data.choices[0].message.content;
 
       setMessages(prev => [...prev, { role: 'assistant', content: text }]);
     } catch (error) {
       console.error('AI Error:', error);
       let errorMsg = error.message;
-      if (errorMsg.includes('invalid authentication credentials') || errorMsg.includes('API key not valid')) {
-        errorMsg = "API Key is invalid or expired. Please click the 🔑 icon to enter a valid Gemini API Key (starts with AIza...). You can get one for free at aistudio.google.com.";
+      if (errorMsg.toLowerCase().includes('authentication') || errorMsg.includes('API key')) {
+        errorMsg = "API Key is invalid or expired. Please click the 🔑 icon to enter a valid DeepSeek API Key.";
         setShowSettings(true);
       }
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${errorMsg}` }]);
@@ -105,18 +117,15 @@ Please provide a helpful, concise, and friendly response based on this context.`
 
       {showSettings && (
         <div style={{padding: '12px', borderBottom: '1px solid var(--glass-border)', backgroundColor: 'rgba(255,255,255,0.05)'}}>
-          <label className="input-label">Gemini API Key</label>
+          <label className="input-label">DeepSeek API Key</label>
           <input 
             type="text" 
             className="input-field" 
             style={{marginBottom: '8px'}}
             value={apiKey} 
             onChange={(e) => saveApiKey(e.target.value)}
-            placeholder="AIzaSy..."
+            placeholder="sk-..."
           />
-          <p style={{fontSize: '11px', color: 'var(--text-secondary)', margin: 0}}>
-            Get a free key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{color: 'var(--primary)'}}>aistudio.google.com</a>
-          </p>
         </div>
       )}
 
