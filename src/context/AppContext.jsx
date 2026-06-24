@@ -31,44 +31,61 @@ export const AppProvider = ({ children }) => {
     return () => unsubscribe();
   }, []);
 
-  const fetchOverpassData = useCallback(async (lat, lng, radius) => {
+  const fetchGooglePlacesData = useCallback(async (lat, lng, radius) => {
     if (!lat || !lng) return;
     setIsFetching(true);
     
-    const query = `
-      [out:json][timeout:25];
-      (
-        node["amenity"~"restaurant|cafe|fast_food|bar|pub"](around:${radius},${lat},${lng});
-        way["amenity"~"restaurant|cafe|fast_food|bar|pub"](around:${radius},${lat},${lng});
-      );
-      out center;
-    `;
-    
-    const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
-    
     try {
-      const response = await fetch(url);
+      const GOOGLE_API_KEY = "AIzaSyAsIMxWSI1zXc3B28aLdIaQ0q55vikXEb0";
+      
+      const response = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': GOOGLE_API_KEY,
+          'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.primaryType,places.shortFormattedAddress'
+        },
+        body: JSON.stringify({
+          locationRestriction: {
+            circle: {
+              center: { latitude: lat, longitude: lng },
+              radius: radius
+            }
+          },
+          includedTypes: ['restaurant', 'cafe', 'fast_food', 'bar', 'coffee_shop', 'pizza_restaurant', 'thai_restaurant'],
+          maxResultCount: 20
+        })
+      });
+
       const data = await response.json();
       
-      const newShops = data.elements.map(el => {
-        const pLat = el.lat || el.center.lat;
-        const pLng = el.lon || el.center.lon;
-        const name = el.tags.name || el.tags['name:en'] || 'Unnamed Place';
-        const category = el.tags.amenity ? el.tags.amenity.replace('_', ' ') : 'Shop';
-        
+      if (data.error) {
+        console.error("Google Places API Error:", data.error.message);
+        if (data.error.message.includes('billing')) {
+          alert('Google Maps Error: โควต้าฟรีจะไม่ทำงานหากยังไม่ผูกบัตรเครดิตใน Google Cloud Console ครับ');
+        }
+        return;
+      }
+
+      if (!data.places) {
+        setFetchedShops([]);
+        return;
+      }
+      
+      const newShops = data.places.map(place => {
         return {
-          id: `osm-${el.id}`,
-          name: name,
-          category: category.charAt(0).toUpperCase() + category.slice(1),
-          description: `Fetched from OpenStreetMap`,
-          lat: pLat,
-          lng: pLng
+          id: `google-${place.id}`,
+          name: place.displayName?.text || 'Unnamed Place',
+          category: (place.primaryType || 'Shop').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          description: place.shortFormattedAddress || 'Fetched from Google Maps',
+          lat: place.location.latitude,
+          lng: place.location.longitude
         };
       });
       
-      setFetchedShops(newShops.filter(s => s.name !== 'Unnamed Place'));
+      setFetchedShops(newShops);
     } catch (error) {
-      console.error("Failed to fetch from Overpass:", error);
+      console.error("Failed to fetch from Google Places:", error);
     } finally {
       setIsFetching(false);
     }
@@ -76,9 +93,9 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     if (currentLocation) {
-      fetchOverpassData(currentLocation.lat, currentLocation.lng, searchRadius);
+      fetchGooglePlacesData(currentLocation.lat, currentLocation.lng, searchRadius);
     }
-  }, [currentLocation, searchRadius, fetchOverpassData]);
+  }, [currentLocation, searchRadius, fetchGooglePlacesData]);
 
   const login = (role, name) => setUser({ role, name });
   const logout = () => setUser(null);
