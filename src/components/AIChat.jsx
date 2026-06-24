@@ -1,12 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { MessageSquare, X, Send, Bot, User } from 'lucide-react';
+import { MessageSquare, X, Send, Bot, User, Key } from 'lucide-react';
 
-const GEMINI_API_KEY = 'AQ.Ab8RN6LuQdRV5C9BK7gLjn5HlnjLAfiq2Zrh3vZdLAYyq9M9EQ';
+const DEFAULT_KEY = 'AQ.Ab8RN6LuQdRV5C9BK7gLjn5HlnjLAfiq2Zrh3vZdLAYyq9M9EQ';
 
 export default function AIChat() {
   const { shops, currentLocation } = useAppContext();
   const [isOpen, setIsOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || DEFAULT_KEY);
+  
   const [messages, setMessages] = useState([
     { role: 'assistant', content: 'Hello! I am your AI Map Companion. I can help you find places and give recommendations based on your current map data.' }
   ]);
@@ -21,6 +24,11 @@ export default function AIChat() {
   useEffect(() => {
     if (isOpen) scrollToBottom();
   }, [messages, isOpen]);
+
+  const saveApiKey = (key) => {
+    setApiKey(key);
+    localStorage.setItem('gemini_api_key', key);
+  };
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -40,7 +48,7 @@ Current context:
 
 Please provide a helpful, concise, and friendly response based on this context.`;
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -59,7 +67,12 @@ Please provide a helpful, concise, and friendly response based on this context.`
       setMessages(prev => [...prev, { role: 'assistant', content: text }]);
     } catch (error) {
       console.error('AI Error:', error);
-      setMessages(prev => [...prev, { role: 'assistant', content: `Sorry, I encountered an error: ${error.message}` }]);
+      let errorMsg = error.message;
+      if (errorMsg.includes('invalid authentication credentials') || errorMsg.includes('API key not valid')) {
+        errorMsg = "API Key is invalid or expired. Please click the 🔑 icon to enter a valid Gemini API Key (starts with AIza...). You can get one for free at aistudio.google.com.";
+        setShowSettings(true);
+      }
+      setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${errorMsg}` }]);
     } finally {
       setIsLoading(false);
     }
@@ -80,8 +93,32 @@ Please provide a helpful, concise, and friendly response based on this context.`
           <Bot size={20} color="var(--primary)" />
           <h3 style={{margin: 0}}>AI Companion</h3>
         </div>
-        <button className="btn-icon btn-outline" onClick={() => setIsOpen(false)}><X size={18} /></button>
+        <div style={{display: 'flex', gap: '8px'}}>
+          <button className="btn-icon btn-outline" onClick={() => setShowSettings(!showSettings)} title="API Settings">
+            <Key size={16} />
+          </button>
+          <button className="btn-icon btn-outline" onClick={() => setIsOpen(false)}>
+            <X size={18} />
+          </button>
+        </div>
       </div>
+
+      {showSettings && (
+        <div style={{padding: '12px', borderBottom: '1px solid var(--glass-border)', backgroundColor: 'rgba(255,255,255,0.05)'}}>
+          <label className="input-label">Gemini API Key</label>
+          <input 
+            type="text" 
+            className="input-field" 
+            style={{marginBottom: '8px'}}
+            value={apiKey} 
+            onChange={(e) => saveApiKey(e.target.value)}
+            placeholder="AIzaSy..."
+          />
+          <p style={{fontSize: '11px', color: 'var(--text-secondary)', margin: 0}}>
+            Get a free key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{color: 'var(--primary)'}}>aistudio.google.com</a>
+          </p>
+        </div>
+      )}
 
       <div style={messagesStyle}>
         {messages.map((msg, i) => (
@@ -90,7 +127,7 @@ Please provide a helpful, concise, and friendly response based on this context.`
               {msg.role === 'user' ? <User size={12}/> : <Bot size={12}/>}
               {msg.role === 'user' ? 'You' : 'AI'}
             </div>
-            <div style={{fontSize: '14px'}}>{msg.content}</div>
+            <div style={{fontSize: '14px', whiteSpace: 'pre-wrap'}}>{msg.content}</div>
           </div>
         ))}
         {isLoading && (
