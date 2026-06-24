@@ -40,7 +40,7 @@ Current context:
 
 Please provide a helpful, concise, and friendly response based on this context.`;
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -49,12 +49,17 @@ Please provide a helpful, concise, and friendly response based on this context.`
       });
       
       const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error?.message || 'Unknown API error');
+      }
+
       const text = data.candidates[0].content.parts[0].text;
 
       setMessages(prev => [...prev, { role: 'assistant', content: text }]);
     } catch (error) {
       console.error('AI Error:', error);
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error connecting to the AI.' }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: `Sorry, I encountered an error: ${error.message}` }]);
     } finally {
       setIsLoading(false);
     }
